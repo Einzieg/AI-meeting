@@ -23,6 +23,21 @@ export type OpenAICompatibleConfig = ProviderConfig & {
   models?: ModelInfo[];
 };
 
+function stripTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+function looksLikeHtml(contentType: string, text: string): boolean {
+  if (contentType.includes("text/html")) return true;
+  const trimmed = text.trimStart().toLowerCase();
+  return trimmed.startsWith("<!doctype") || trimmed.startsWith("<html");
+}
+
+function truncateForLog(text: string, max = 220): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}...`;
+}
+
 export class OpenAIProvider implements LLMProvider {
   readonly provider_id: string;
   readonly provider_name: string;
@@ -34,7 +49,7 @@ export class OpenAIProvider implements LLMProvider {
     this.provider_id = config.provider_id ?? "openai";
     this.provider_name = config.provider_name ?? "OpenAI";
     this.apiKey = config.api_key ?? "";
-    this.baseUrl = config.base_url ?? "https://api.openai.com/v1";
+    this.baseUrl = stripTrailingSlash(config.base_url ?? "https://api.openai.com/v1");
     this.models = config.models ?? OPENAI_MODELS;
   }
 
@@ -63,7 +78,7 @@ export class OpenAIProvider implements LLMProvider {
       }
     }
 
-    const res = await fetch(`${this.baseUrl}/chat/completions`, {
+    const requestOptions = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -71,23 +86,73 @@ export class OpenAIProvider implements LLMProvider {
       },
       body: JSON.stringify(body),
       signal: options?.signal,
-    });
+    } as const;
 
-    if (!res.ok) {
-      const err = await res.text().catch(() => "unknown error");
-      throw new Error(`OpenAI API error (${res.status}): ${err}`);
+    const primaryUrl = `${this.baseUrl}/chat/completions`;
+    const fallbackUrl = /\/v\d+$/i.test(this.baseUrl)
+      ? null
+      : `${this.baseUrl}/v1/chat/completions`;
+
+    const requestOnce = async (url: string): Promise<{
+      url: string;
+      status: number;
+      ok: boolean;
+      contentType: string;
+      text: string;
+    }> => {
+      const res = await fetch(url, requestOptions);
+      const text = await res.text().catch(() => "");
+      return {
+        url,
+        status: res.status,
+        ok: res.ok,
+        contentType: (res.headers.get("content-type") ?? "").toLowerCase(),
+        text,
+      };
+    };
+
+    let response = await requestOnce(primaryUrl);
+
+    // Compatibility fallback: many OpenAI-compatible gateways require "/v1".
+    if (
+      fallbackUrl &&
+      (response.status === 404 || looksLikeHtml(response.contentType, response.text))
+    ) {
+      response = await requestOnce(fallbackUrl);
     }
 
-    const data = await res.json();
-    const choice = data.choices?.[0];
+    if (!response.ok) {
+      throw new Error(
+        `OpenAI API error (${response.status}) at ${response.url}: ${truncateForLog(response.text)}`
+      );
+    }
+
+    let data: unknown;
+    try {
+      data = JSON.parse(response.text);
+    } catch {
+      throw new Error(
+        `OpenAI API returned non-JSON at ${response.url} (content-type: ${response.contentType}): ${truncateForLog(response.text)}`
+      );
+    }
+
+    const parsed = data as {
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
+    };
+    const choice = parsed.choices?.[0];
     return {
       text: choice?.message?.content ?? "",
-      usage: data.usage ? {
-        prompt_tokens: data.usage.prompt_tokens,
-        completion_tokens: data.usage.completion_tokens,
-        total_tokens: data.usage.total_tokens,
+      usage: parsed.usage ? {
+        prompt_tokens: parsed.usage.prompt_tokens,
+        completion_tokens: parsed.usage.completion_tokens,
+        total_tokens: parsed.usage.total_tokens,
       } : undefined,
-      raw: data,
+      raw: parsed,
     };
   }
 }
