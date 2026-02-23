@@ -9,26 +9,42 @@ import type { LLMClient } from "./llm/types";
 import { MeetingRunner } from "./orchestrator/runner";
 import type { SseEventToAppend } from "./sse/events";
 
-// ── Singleton instances (process-scoped) ──
+type RuntimeState = {
+  store: Store;
+  registry: LLMRegistry | null;
+  runners: Map<string, MeetingRunner>;
+  sseListeners: Map<string, Set<(event: SseEventToAppend) => void>>;
+};
 
-let store: Store | null = null;
-let registry: LLMRegistry | null = null;
-const runners = new Map<string, MeetingRunner>();
-const sseListeners = new Map<string, Set<(event: SseEventToAppend) => void>>();
+declare global {
+  // Persist runtime state across Next.js dev hot-reloads/module reloads.
+  var __aiMeetingRuntime: RuntimeState | undefined;
+}
+
+function getRuntimeState(): RuntimeState {
+  if (!globalThis.__aiMeetingRuntime) {
+    globalThis.__aiMeetingRuntime = {
+      store: new InMemoryStore(),
+      registry: null,
+      runners: new Map(),
+      sseListeners: new Map(),
+    };
+  }
+  return globalThis.__aiMeetingRuntime;
+}
 
 export function getStore(): Store {
-  if (!store) {
-    store = new InMemoryStore();
-  }
-  return store;
+  return getRuntimeState().store;
 }
 
 export function getLLMRegistry(): LLMRegistry {
-  if (!registry) {
-    registry = new LLMRegistry();
+  const runtime = getRuntimeState();
+
+  if (!runtime.registry) {
+    runtime.registry = new LLMRegistry();
 
     // Always register Mock
-    registry.register(new MockProvider({
+    runtime.registry.register(new MockProvider({
       default_style: "neutral",
       per_agent_style: {
         "agent-1": "optimist",
@@ -43,7 +59,7 @@ export function getLLMRegistry(): LLMRegistry {
     // Register real providers when API keys are configured
     const openaiKey = process.env.OPENAI_API_KEY;
     if (openaiKey) {
-      registry.register(new OpenAIProvider({
+      runtime.registry.register(new OpenAIProvider({
         api_key: openaiKey,
         base_url: process.env.OPENAI_BASE_URL,
       }));
@@ -51,7 +67,7 @@ export function getLLMRegistry(): LLMRegistry {
 
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     if (anthropicKey) {
-      registry.register(new AnthropicProvider({
+      runtime.registry.register(new AnthropicProvider({
         api_key: anthropicKey,
         base_url: process.env.ANTHROPIC_BASE_URL,
       }));
@@ -59,13 +75,14 @@ export function getLLMRegistry(): LLMRegistry {
 
     const geminiKey = process.env.GOOGLE_GEMINI_API_KEY;
     if (geminiKey) {
-      registry.register(new GeminiProvider({
+      runtime.registry.register(new GeminiProvider({
         api_key: geminiKey,
         base_url: process.env.GOOGLE_GEMINI_BASE_URL,
       }));
     }
   }
-  return registry;
+
+  return runtime.registry;
 }
 
 export function getLLMClient(): LLMClient {
@@ -73,13 +90,15 @@ export function getLLMClient(): LLMClient {
 }
 
 export function getRunner(meetingId: string): MeetingRunner | undefined {
-  return runners.get(meetingId);
+  return getRuntimeState().runners.get(meetingId);
 }
 
 export function createRunner(meetingId: string): MeetingRunner {
+  const runtime = getRuntimeState();
+
   const runner = new MeetingRunner(getStore(), getLLMClient(), {
     onEvent: (event: SseEventToAppend) => {
-      const listeners = sseListeners.get(meetingId);
+      const listeners = runtime.sseListeners.get(meetingId);
       if (listeners) {
         for (const listener of listeners) {
           listener(event);
@@ -87,16 +106,21 @@ export function createRunner(meetingId: string): MeetingRunner {
       }
     },
   });
-  runners.set(meetingId, runner);
+
+  runtime.runners.set(meetingId, runner);
   return runner;
 }
 
 export function addSseListener(meetingId: string, listener: (event: SseEventToAppend) => void): () => void {
-  if (!sseListeners.has(meetingId)) {
-    sseListeners.set(meetingId, new Set());
+  const runtime = getRuntimeState();
+
+  if (!runtime.sseListeners.has(meetingId)) {
+    runtime.sseListeners.set(meetingId, new Set());
   }
-  sseListeners.get(meetingId)!.add(listener);
+
+  runtime.sseListeners.get(meetingId)!.add(listener);
+
   return () => {
-    sseListeners.get(meetingId)?.delete(listener);
+    runtime.sseListeners.get(meetingId)?.delete(listener);
   };
 }
