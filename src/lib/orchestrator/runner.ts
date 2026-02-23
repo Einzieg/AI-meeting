@@ -354,7 +354,12 @@ export class MeetingRunner {
     const recentMessages = allMessages.filter((m) => m.meta.round >= round - 1).slice(-20);
     const rollingSummary = this.getLatestRollingSummary(allMessages);
 
-    const facilitator = new FacilitatorService(this.llmClient, meeting.config.facilitator);
+    const firstEnabledAgent = meeting.config.agents.find((agent) => agent.enabled);
+    const facilitator = new FacilitatorService(this.llmClient, {
+      ...meeting.config.facilitator,
+      provider: meeting.config.facilitator.provider ?? firstEnabledAgent?.provider ?? "mock",
+      model: meeting.config.facilitator.model ?? firstEnabledAgent?.model ?? "default",
+    });
     const proposal = this.generateProposal(allMessages, meeting.topic);
 
     try {

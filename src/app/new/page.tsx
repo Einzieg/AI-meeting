@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { AgentConfigInput } from "@/lib/domain/config";
 import type { ProviderInfo } from "@/lib/llm/types";
@@ -44,25 +44,56 @@ export default function NewMeetingPage() {
   const [error, setError] = useState<string | null>(null);
   const [expandedAgent, setExpandedAgent] = useState<number | null>(null);
 
-  // Fetch providers on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/providers");
-        const json = await res.json();
-        if (json.ok) {
-          const provs: ProviderInfo[] = json.data;
-          setProviders(provs);
-          // Init default agents once providers loaded
-          setAgents([
+  const loadProviders = useCallback(async () => {
+    try {
+      const res = await fetch("/api/providers", { cache: "no-store" });
+      const json = await res.json();
+      if (!json.ok) return;
+
+      const provs: ProviderInfo[] = json.data;
+      setProviders(provs);
+      setAgents((prev) => {
+        // First load: initialize default agents.
+        if (prev.length === 0) {
+          return [
             defaultAgent(0, provs),
             defaultAgent(1, provs),
             defaultAgent(2, provs),
-          ]);
+          ];
         }
-      } catch { /* ignore */ }
-    })();
+
+        // Keep current agent setup, but fix stale provider/model selections.
+        return prev.map((agent) => {
+          const provider = provs.find((p) => p.id === agent.provider) ?? provs[0];
+          if (!provider) return agent;
+          const hasModel = provider.models.some((m) => m.id === agent.model);
+          return {
+            ...agent,
+            provider: provider.id,
+            model: hasModel ? agent.model : (provider.models[0]?.id ?? ""),
+          };
+        });
+      });
+    } catch {
+      // ignore
+    }
   }, []);
+
+  // Fetch providers on mount, and refresh when window gets focus.
+  useEffect(() => {
+    loadProviders().catch(() => {
+      // handled in loadProviders
+    });
+
+    const onFocus = () => {
+      loadProviders().catch(() => {
+        // handled in loadProviders
+      });
+    };
+
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [loadProviders]);
 
   const modelsForProvider = (providerId: string) => {
     return providers.find((p) => p.id === providerId)?.models ?? [];
