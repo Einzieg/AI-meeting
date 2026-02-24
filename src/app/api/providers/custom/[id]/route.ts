@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getLLMRegistry } from "@/lib/runtime";
 import type { CustomProviderConfig } from "@/lib/llm/types";
+import {
+  deleteCustomProviderConfig,
+  getCustomProviderConfig,
+  updateCustomProviderConfig,
+} from "@/lib/llm/custom-provider-persistence";
+
+export const runtime = "nodejs";
 
 const ModelInfoSchema = z.object({
   id: z.string().min(1).max(120),
@@ -30,8 +37,9 @@ type RouteParams = { params: Promise<{ id: string }> };
 // GET /api/providers/custom/:id (key masked)
 export async function GET(_req: Request, { params }: RouteParams) {
   const { id } = await params;
-  const registry = getLLMRegistry();
-  const config = registry.getCustomConfig(id);
+  // Ensure persisted configs are loaded and any in-memory configs are migrated (dev hot reload).
+  getLLMRegistry();
+  const config = getCustomProviderConfig(id);
   if (!config) {
     return NextResponse.json(
       { ok: false, error: { code: "NOT_FOUND", message: `Custom provider "${id}" not found` } },
@@ -46,7 +54,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
   try {
     const { id } = await params;
     const registry = getLLMRegistry();
-    const existing = registry.getCustomConfig(id);
+    const existing = getCustomProviderConfig(id);
     if (!existing) {
       return NextResponse.json(
         { ok: false, error: { code: "NOT_FOUND", message: `Custom provider "${id}" not found` } },
@@ -66,7 +74,17 @@ export async function PUT(request: Request, { params }: RouteParams) {
       created_at: existing.created_at,
     };
 
-    registry.updateCustom(updated);
+    const ok = updateCustomProviderConfig(updated);
+    if (!ok) {
+      return NextResponse.json(
+        { ok: false, error: { code: "NOT_FOUND", message: `Custom provider "${id}" not found` } },
+        { status: 404 }
+      );
+    }
+
+    if (!registry.updateCustom(updated)) {
+      registry.registerCustom(updated);
+    }
     return NextResponse.json({ ok: true, data: maskKey(updated) });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -75,6 +93,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
         { status: 400 }
       );
     }
+    console.error("[API] PUT /api/providers/custom/:id error:", err);
     return NextResponse.json(
       { ok: false, error: { code: "INTERNAL", message: "Failed to update provider" } },
       { status: 500 }
@@ -86,12 +105,15 @@ export async function PUT(request: Request, { params }: RouteParams) {
 export async function DELETE(_req: Request, { params }: RouteParams) {
   const { id } = await params;
   const registry = getLLMRegistry();
-  const removed = registry.unregisterCustom(id);
-  if (!removed) {
+
+  const removedFromStore = deleteCustomProviderConfig(id);
+  if (!removedFromStore) {
     return NextResponse.json(
       { ok: false, error: { code: "NOT_FOUND", message: `Custom provider "${id}" not found` } },
       { status: 404 }
     );
   }
+
+  registry.unregisterCustom(id);
   return NextResponse.json({ ok: true });
 }

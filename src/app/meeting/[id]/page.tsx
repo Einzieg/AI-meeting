@@ -6,6 +6,7 @@ import { useMeetingStore, type MeetingDetail } from "@/store/meeting-store";
 import { useMeetingStream } from "@/hooks/use-meeting-stream";
 import type { Message, Vote } from "@/lib/domain/models";
 import { useT, type TFunction } from "@/hooks/use-t";
+import { Markdown } from "@/components/markdown";
 
 const AGENT_COLORS: Record<string, string> = {
   "agent-1": "#6366f1", "agent-2": "#ec4899", "agent-3": "#14b8a6", "agent-4": "#f59e0b",
@@ -49,9 +50,11 @@ function MessageBubble({ msg, meeting, t }: { msg: Message; meeting: MeetingDeta
     const systemId = msg.system_id ?? t("common.system");
     return (
       <div className="flex justify-center mb-3">
-        <div className="max-w-[85%] bg-surface-2 border border-border rounded-lg px-4 py-2 text-center">
-          <p className="text-xs text-text-muted mb-1">{systemId} &middot; {t("common.round", { n: msg.meta.round })}</p>
-          <p className="text-sm text-text-secondary whitespace-pre-wrap">{msg.content}</p>
+        <div className="max-w-[85%] bg-surface-2 border border-border rounded-lg px-4 py-2">
+          <p className="text-xs text-text-muted mb-2 text-center">
+            {systemId} &middot; {t("common.round", { n: msg.meta.round })}
+          </p>
+          <Markdown content={msg.content} className="text-sm text-text-secondary" />
         </div>
       </div>
     );
@@ -72,7 +75,7 @@ function MessageBubble({ msg, meeting, t }: { msg: Message; meeting: MeetingDeta
           <span className="text-[10px] text-text-muted">R{msg.meta.round}</span>
         </div>
         <div className="bg-surface-2 border border-border rounded-lg px-3 py-2">
-          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+          <Markdown content={msg.content} className="text-sm" />
         </div>
         {msg.meta.latency_ms && (
           <p className="text-[10px] text-text-muted mt-0.5">{msg.meta.latency_ms}ms</p>

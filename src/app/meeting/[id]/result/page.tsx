@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import type { MeetingDetail } from "@/store/meeting-store";
 import type { Message, Vote } from "@/lib/domain/models";
 import { useT } from "@/hooks/use-t";
+import { Markdown } from "@/components/markdown";
 
 const AGENT_COLORS: Record<string, string> = {
   "agent-1": "#6366f1", "agent-2": "#ec4899", "agent-3": "#14b8a6", "agent-4": "#f59e0b",
@@ -163,9 +164,7 @@ export default function ResultPage() {
       {meeting.result?.summary_markdown && (
         <div className="card mb-6">
           <h2 className="text-sm font-medium text-text-muted mb-2">{t("result.summary")}</h2>
-          <div className="text-sm whitespace-pre-wrap text-text-secondary">
-            {meeting.result.summary_markdown}
-          </div>
+          <Markdown content={meeting.result.summary_markdown} className="text-sm text-text-secondary" />
         </div>
       )}
 

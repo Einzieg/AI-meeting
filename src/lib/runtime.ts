@@ -4,6 +4,7 @@ import { MockProvider } from "./llm/mock-provider";
 import { OpenAIProvider } from "./llm/openai-provider";
 import { AnthropicProvider } from "./llm/anthropic-provider";
 import { GeminiProvider } from "./llm/gemini-provider";
+import { createCustomProviderConfig, listCustomProviderConfigs } from "./llm/custom-provider-persistence";
 import type { Store } from "./storage/store";
 import type { LLMClient } from "./llm/types";
 import { MeetingRunner } from "./orchestrator/runner";
@@ -12,6 +13,7 @@ import type { SseEventToAppend } from "./sse/events";
 type RuntimeState = {
   store: Store;
   registry: LLMRegistry | null;
+  custom_providers_initialized: boolean;
   runners: Map<string, MeetingRunner>;
   sseListeners: Map<string, Set<(event: SseEventToAppend) => void>>;
 };
@@ -26,6 +28,7 @@ function getRuntimeState(): RuntimeState {
     globalThis.__aiMeetingRuntime = {
       store: new InMemoryStore(),
       registry: null,
+      custom_providers_initialized: false,
       runners: new Map(),
       sseListeners: new Map(),
     };
@@ -79,6 +82,28 @@ export function getLLMRegistry(): LLMRegistry {
         api_key: geminiKey,
         base_url: process.env.GOOGLE_GEMINI_BASE_URL,
       }));
+    }
+  }
+
+  if (!runtime.custom_providers_initialized) {
+    runtime.custom_providers_initialized = true;
+
+    try {
+      // Load persisted custom providers into registry.
+      for (const config of listCustomProviderConfigs()) {
+        runtime.registry.registerCustom(config);
+      }
+
+      // Best-effort migration: persist any in-memory custom providers (dev hot reload).
+      for (const config of runtime.registry.listCustomConfigs()) {
+        try {
+          createCustomProviderConfig(config);
+        } catch {
+          // ignore
+        }
+      }
+    } catch (err) {
+      console.error("[Runtime] Failed to initialize custom providers:", err);
     }
   }
 

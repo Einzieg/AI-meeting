@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getLLMRegistry } from "@/lib/runtime";
 import type { ModelInfo, ProviderInfo } from "@/lib/llm/types";
 
+const AUTO_PROVIDER_ID = "auto";
+
 function trimSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
@@ -135,6 +137,34 @@ function applyOverride(providers: ProviderInfo[], providerId: string, models: Mo
   return providers.map((p) => (p.id === providerId ? { ...p, models } : p));
 }
 
+function buildAutoProvider(providers: ProviderInfo[]): ProviderInfo {
+  const hasRealProviders = providers.some((p) => p.id !== "mock");
+  const seen = new Set<string>();
+  const models: ModelInfo[] = [];
+  for (const p of providers) {
+    if (p.id === AUTO_PROVIDER_ID) continue;
+    if (hasRealProviders && p.id === "mock") continue;
+    for (const m of p.models) {
+      if (seen.has(m.id)) continue;
+      seen.add(m.id);
+      models.push(m);
+    }
+  }
+
+  return {
+    id: AUTO_PROVIDER_ID,
+    name: "Auto (By Model)",
+    configured: hasRealProviders,
+    models,
+  };
+}
+
+function insertAfterMock(providers: ProviderInfo[], item: ProviderInfo): ProviderInfo[] {
+  const idx = providers.findIndex((p) => p.id === "mock");
+  if (idx < 0) return [item, ...providers];
+  return [...providers.slice(0, idx + 1), item, ...providers.slice(idx + 1)];
+}
+
 // GET /api/providers - List available providers and their models
 export async function GET() {
   try {
@@ -160,6 +190,9 @@ export async function GET() {
     providers = applyOverride(providers, "openai", openaiModels);
     providers = applyOverride(providers, "anthropic", anthropicModels);
     providers = applyOverride(providers, "gemini", geminiModels);
+
+    // Pseudo-provider: allows choosing models without manually picking the provider.
+    providers = insertAfterMock(providers, buildAutoProvider(providers));
 
     return NextResponse.json({ ok: true, data: providers });
   } catch (err) {
