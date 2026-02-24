@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { MeetingDetail } from "@/store/meeting-store";
 import type { Message, Vote } from "@/lib/domain/models";
+import { useT } from "@/hooks/use-t";
 
 const AGENT_COLORS: Record<string, string> = {
   "agent-1": "#6366f1", "agent-2": "#ec4899", "agent-3": "#14b8a6", "agent-4": "#f59e0b",
@@ -14,6 +15,7 @@ export default function ResultPage() {
   const params = useParams();
   const router = useRouter();
   const meetingId = params.id as string;
+  const t = useT();
 
   const [meeting, setMeeting] = useState<MeetingDetail | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -39,15 +41,15 @@ export default function ResultPage() {
   if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
-        <p className="text-text-muted animate-pulse">Loading result...</p>
+        <p className="text-text-muted animate-pulse">{t("result.loading")}</p>
       </main>
     );
   }
   if (!meeting) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <p className="text-danger">Meeting not found</p>
-        <button onClick={() => router.push("/")} className="btn btn-outline">Back</button>
+        <p className="text-danger">{t("meeting.not_found")}</p>
+        <button onClick={() => router.push("/")} className="btn btn-outline">{t("common.back")}</button>
       </main>
     );
   }
@@ -67,7 +69,7 @@ export default function ResultPage() {
 
   return (
     <main className="min-h-screen p-6 max-w-4xl mx-auto">
-      <button onClick={() => router.push("/")} className="btn btn-outline mb-6 text-sm">&larr; Back to Home</button>
+      <button onClick={() => router.push("/")} className="btn btn-outline mb-6 text-sm">&larr; {t("common.back_home")}</button>
 
       {/* Status Banner */}
       <div className={`card mb-6 border-l-4 ${accepted ? "border-l-success" : "border-l-danger"}`}>
@@ -77,10 +79,10 @@ export default function ResultPage() {
           </span>
           <div>
             <h1 className="text-xl font-bold">
-              {accepted ? "Consensus Reached" : "Meeting Ended"}
+              {accepted ? t("result.consensus_reached") : t("result.meeting_ended")}
             </h1>
             <p className="text-text-secondary text-sm">
-              {meeting.result?.reason ?? (accepted ? "Agents reached consensus." : "Meeting was aborted.")}
+              {meeting.result?.reason ?? (accepted ? t("result.reason_consensus") : t("result.reason_aborted"))}
             </p>
           </div>
         </div>
@@ -88,17 +90,17 @@ export default function ResultPage() {
 
       {/* Topic */}
       <div className="card mb-6">
-        <h2 className="text-sm font-medium text-text-muted mb-1">Topic</h2>
+        <h2 className="text-sm font-medium text-text-muted mb-1">{t("result.topic")}</h2>
         <p className="text-base">{meeting.topic}</p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Rounds", value: roundCount },
-          { label: "Messages", value: agentMessages.length },
-          { label: "Avg Score", value: avgScore },
-          { label: "Agents", value: meeting.config.agents.length },
+          { label: t("result.stats.rounds"), value: roundCount },
+          { label: t("result.stats.messages"), value: agentMessages.length },
+          { label: t("result.stats.avg_score"), value: avgScore },
+          { label: t("result.stats.agents"), value: meeting.config.agents.length },
         ].map(({ label, value }) => (
           <div key={label} className="card text-center">
             <p className="text-2xl font-bold">{value}</p>
@@ -110,7 +112,7 @@ export default function ResultPage() {
       {/* Final Votes */}
       {finalVotes.length > 0 && (
         <div className="card mb-6">
-          <h2 className="text-sm font-medium text-text-muted mb-3">Final Vote Results</h2>
+          <h2 className="text-sm font-medium text-text-muted mb-3">{t("result.final_votes")}</h2>
           <div className="space-y-2">
             {finalVotes.map((vote) => (
               <div key={vote.id} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
@@ -138,7 +140,7 @@ export default function ResultPage() {
       {/* Discussion Timeline (collapsed) */}
       <details className="card mb-6">
         <summary className="cursor-pointer text-sm font-medium text-text-muted">
-          Full Discussion ({messages.length} messages)
+          {t("result.full_discussion", { n: messages.length })}
         </summary>
         <div className="mt-3 space-y-2 max-h-[500px] overflow-y-auto">
           {messages.map((msg) => (
@@ -149,7 +151,7 @@ export default function ResultPage() {
                   msg.role === "user" ? "#6366f1" : "#71717a"
               }}>
                 {msg.role === "agent" ? (agentMap[msg.agent_id ?? ""] ?? msg.agent_id) :
-                  msg.role === "user" ? "You" : (msg.system_id ?? "system")}
+                  msg.role === "user" ? t("common.you") : (msg.system_id ?? t("common.system"))}
               </span>
               <span className="text-xs text-text-secondary flex-1 line-clamp-2">{msg.content}</span>
             </div>
@@ -160,7 +162,7 @@ export default function ResultPage() {
       {/* Summary */}
       {meeting.result?.summary_markdown && (
         <div className="card mb-6">
-          <h2 className="text-sm font-medium text-text-muted mb-2">Summary</h2>
+          <h2 className="text-sm font-medium text-text-muted mb-2">{t("result.summary")}</h2>
           <div className="text-sm whitespace-pre-wrap text-text-secondary">
             {meeting.result.summary_markdown}
           </div>
@@ -168,7 +170,7 @@ export default function ResultPage() {
       )}
 
       <button onClick={() => router.push("/new")} className="btn btn-primary w-full py-3">
-        Start New Meeting
+        {t("result.start_new")}
       </button>
     </main>
   );

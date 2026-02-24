@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useMeetingStore, type MeetingDetail } from "@/store/meeting-store";
 import { useMeetingStream } from "@/hooks/use-meeting-stream";
 import type { Message, Vote } from "@/lib/domain/models";
+import { useT, type TFunction } from "@/hooks/use-t";
 
 const AGENT_COLORS: Record<string, string> = {
   "agent-1": "#6366f1", "agent-2": "#ec4899", "agent-3": "#14b8a6", "agent-4": "#f59e0b",
@@ -20,24 +21,24 @@ function agentDisplayName(meeting: MeetingDetail | null, agentId: string): strin
   return agent?.display_name ?? agentId;
 }
 
-function stateLabel(state: string): { text: string; color: string } {
+function stateLabel(state: string, t: TFunction): { text: string; color: string } {
   switch (state) {
-    case "DRAFT": return { text: "Draft", color: "text-text-muted" };
-    case "RUNNING_DISCUSSION": return { text: "Discussing", color: "text-primary" };
-    case "RUNNING_VOTE": return { text: "Voting", color: "text-warning" };
-    case "FINISHED_ACCEPTED": return { text: "Accepted", color: "text-success" };
-    case "FINISHED_ABORTED": return { text: "Aborted", color: "text-danger" };
+    case "DRAFT": return { text: t("meeting.state.draft"), color: "text-text-muted" };
+    case "RUNNING_DISCUSSION": return { text: t("meeting.state.discussing"), color: "text-primary" };
+    case "RUNNING_VOTE": return { text: t("meeting.state.voting"), color: "text-warning" };
+    case "FINISHED_ACCEPTED": return { text: t("meeting.state.accepted"), color: "text-success" };
+    case "FINISHED_ABORTED": return { text: t("meeting.state.aborted"), color: "text-danger" };
     default: return { text: state, color: "text-text-muted" };
   }
 }
 
 // ── Message Bubble ──
-function MessageBubble({ msg, meeting }: { msg: Message; meeting: MeetingDetail | null }) {
+function MessageBubble({ msg, meeting, t }: { msg: Message; meeting: MeetingDetail | null; t: TFunction }) {
   if (msg.role === "user") {
     return (
       <div className="flex justify-end mb-3">
         <div className="max-w-[75%] bg-primary/20 border border-primary/30 rounded-lg px-4 py-2">
-          <p className="text-xs text-primary mb-1 font-medium">You</p>
+          <p className="text-xs text-primary mb-1 font-medium">{t("common.you")}</p>
           <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
         </div>
       </div>
@@ -45,10 +46,11 @@ function MessageBubble({ msg, meeting }: { msg: Message; meeting: MeetingDetail 
   }
 
   if (msg.role === "system") {
+    const systemId = msg.system_id ?? t("common.system");
     return (
       <div className="flex justify-center mb-3">
         <div className="max-w-[85%] bg-surface-2 border border-border rounded-lg px-4 py-2 text-center">
-          <p className="text-xs text-text-muted mb-1">{msg.system_id ?? "system"} &middot; Round {msg.meta.round}</p>
+          <p className="text-xs text-text-muted mb-1">{systemId} &middot; {t("common.round", { n: msg.meta.round })}</p>
           <p className="text-sm text-text-secondary whitespace-pre-wrap">{msg.content}</p>
         </div>
       </div>
@@ -102,6 +104,7 @@ export default function MeetingPage() {
   const params = useParams();
   const router = useRouter();
   const meetingId = params.id as string;
+  const t = useT();
 
   const { meeting, messages, votes, isConnected, setMeeting, setMessages, setVotes } = useMeetingStore();
   useMeetingStream(meeting?.state?.startsWith("RUNNING") ? meetingId : null);
@@ -166,7 +169,7 @@ export default function MeetingPage() {
     await fetch(`/api/meetings/${meetingId}/abort`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason: "User aborted" }),
+      body: JSON.stringify({ reason: t("meeting.abort_reason_user") }),
     });
     router.push(`/meeting/${meetingId}/result`);
   };
@@ -174,7 +177,7 @@ export default function MeetingPage() {
   if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
-        <p className="text-text-muted animate-pulse">Loading meeting...</p>
+        <p className="text-text-muted animate-pulse">{t("meeting.loading")}</p>
       </main>
     );
   }
@@ -182,13 +185,13 @@ export default function MeetingPage() {
   if (!meeting) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <p className="text-danger">Meeting not found</p>
-        <button onClick={() => router.push("/")} className="btn btn-outline">Back to Home</button>
+        <p className="text-danger">{t("meeting.not_found")}</p>
+        <button onClick={() => router.push("/")} className="btn btn-outline">{t("common.back_home")}</button>
       </main>
     );
   }
 
-  const sl = stateLabel(meeting.state);
+  const sl = stateLabel(meeting.state, t);
   const isRunning = meeting.state.startsWith("RUNNING");
   const isDraft = meeting.state === "DRAFT";
 
@@ -201,15 +204,15 @@ export default function MeetingPage() {
           <h1 className="text-sm font-bold truncate">{meeting.topic}</h1>
           <div className="flex items-center gap-2 text-xs">
             <span className={sl.color}>{sl.text}</span>
-            <span className="text-text-muted">&middot; Round {meeting.round}</span>
-            {isConnected && <span className="text-success">&#9679; Live</span>}
+            <span className="text-text-muted">&middot; {t("common.round", { n: meeting.round })}</span>
+            {isConnected && <span className="text-success">&#9679; {t("common.live")}</span>}
           </div>
         </div>
         {isDraft && (
-          <button onClick={handleStart} className="btn btn-primary text-sm">Start Discussion</button>
+          <button onClick={handleStart} className="btn btn-primary text-sm">{t("meeting.start_discussion")}</button>
         )}
         {isRunning && (
-          <button onClick={handleAbort} className="btn btn-danger text-sm">Abort</button>
+          <button onClick={handleAbort} className="btn btn-danger text-sm">{t("meeting.abort")}</button>
         )}
       </header>
 
@@ -220,16 +223,16 @@ export default function MeetingPage() {
           <div className="flex-1 overflow-y-auto p-4">
             {messages.length === 0 && isDraft && (
               <div className="flex items-center justify-center h-full text-text-muted text-sm">
-                Press &quot;Start Discussion&quot; to begin
+                {t("meeting.press_start_to_begin")}
               </div>
             )}
             {messages.length === 0 && isRunning && (
               <div className="flex items-center justify-center h-full text-text-muted text-sm animate-pulse">
-                Waiting for agents...
+                {t("meeting.waiting_agents")}
               </div>
             )}
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} msg={msg} meeting={meeting} />
+              <MessageBubble key={msg.id} msg={msg} meeting={meeting} t={t} />
             ))}
             <div ref={messagesEndRef} />
           </div>
@@ -240,7 +243,7 @@ export default function MeetingPage() {
               <div className="flex gap-2">
                 <input
                   className="input-field flex-1"
-                  placeholder="Send a steering message..."
+                  placeholder={t("meeting.send_placeholder")}
                   value={userInput}
                   onChange={(e) => setUserInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
@@ -248,11 +251,11 @@ export default function MeetingPage() {
                 />
                 <button onClick={handleSendMessage} disabled={sending || !userInput.trim()}
                   className="btn btn-primary shrink-0">
-                  {sending ? "..." : "Send"}
+                  {sending ? "..." : t("common.send")}
                 </button>
               </div>
               {meeting.state === "RUNNING_VOTE" && (
-                <p className="text-xs text-warning mt-1">Voting in progress. Your message will interrupt the vote.</p>
+                <p className="text-xs text-warning mt-1">{t("meeting.voting_interrupt_warning")}</p>
               )}
             </div>
           )}
@@ -261,7 +264,7 @@ export default function MeetingPage() {
         {/* Sidebar */}
         <aside className="w-56 border-l border-border bg-surface shrink-0 overflow-y-auto hidden md:block">
           <div className="p-3">
-            <h3 className="text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">Agents</h3>
+            <h3 className="text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">{t("meeting.sidebar.agents")}</h3>
             <div className="space-y-1.5">
               {meeting.config.agents.map((agent) => (
                 <div key={agent.id} className="flex items-center gap-2">
@@ -277,7 +280,7 @@ export default function MeetingPage() {
 
           {votes.length > 0 && (
             <div className="p-3 border-t border-border">
-              <h3 className="text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">Latest Votes</h3>
+              <h3 className="text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">{t("meeting.sidebar.latest_votes")}</h3>
               {votes.slice(-meeting.config.agents.length).map((vote) => (
                 <VoteItem key={vote.id} vote={vote} meeting={meeting} />
               ))}
@@ -285,11 +288,11 @@ export default function MeetingPage() {
           )}
 
           <div className="p-3 border-t border-border">
-            <h3 className="text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">Config</h3>
+            <h3 className="text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">{t("meeting.sidebar.config")}</h3>
             <div className="text-xs text-text-secondary space-y-1">
-              <p>Mode: {meeting.effective_discussion_mode ?? meeting.config.discussion.mode}</p>
-              <p>Threshold: {meeting.config.threshold.avg_score_threshold}</p>
-              <p>Rounds: {meeting.config.threshold.min_rounds}-{meeting.config.threshold.max_rounds}</p>
+              <p>{t("meeting.config.mode")}: {meeting.effective_discussion_mode ?? meeting.config.discussion.mode}</p>
+              <p>{t("meeting.config.threshold")}: {meeting.config.threshold.avg_score_threshold}</p>
+              <p>{t("meeting.config.rounds")}: {meeting.config.threshold.min_rounds}-{meeting.config.threshold.max_rounds}</p>
             </div>
           </div>
         </aside>

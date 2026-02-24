@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { AgentConfigInput } from "@/lib/domain/config";
 import type { ProviderInfo } from "@/lib/llm/types";
+import { useT } from "@/hooks/use-t";
 
 const AGENT_COLORS = [
   "bg-agent-1", "bg-agent-2", "bg-agent-3", "bg-agent-4",
@@ -33,6 +34,7 @@ function defaultAgent(index: number, providers: ProviderInfo[]): AgentConfigInpu
 
 export default function NewMeetingPage() {
   const router = useRouter();
+  const t = useT();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [topic, setTopic] = useState("");
   const [agents, setAgents] = useState<AgentConfigInput[]>([]);
@@ -128,7 +130,7 @@ export default function NewMeetingPage() {
   };
 
   const handleSubmit = async () => {
-    if (!topic.trim()) { setError("Please enter a topic"); return; }
+    if (!topic.trim()) { setError(t("new.err_topic_required")); return; }
     setSubmitting(true);
     setError(null);
 
@@ -146,7 +148,7 @@ export default function NewMeetingPage() {
         }),
       });
       const json = await res.json();
-      if (!json.ok) { setError(json.error?.message ?? "Failed to create meeting"); return; }
+      if (!json.ok) { setError(json.error?.message ?? t("new.err_create_failed")); return; }
       router.push(`/meeting/${json.data.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -158,17 +160,17 @@ export default function NewMeetingPage() {
   return (
     <main className="min-h-screen p-6 max-w-3xl mx-auto">
       <header className="mb-8">
-        <button onClick={() => router.push("/")} className="btn btn-outline mb-4 text-sm">&larr; Back</button>
-        <h1 className="text-2xl font-bold">New Meeting</h1>
-        <p className="text-text-secondary text-sm mt-1">Configure agents and start a multi-AI discussion</p>
+        <button onClick={() => router.push("/")} className="btn btn-outline mb-4 text-sm">&larr; {t("common.back")}</button>
+        <h1 className="text-2xl font-bold">{t("new.title")}</h1>
+        <p className="text-text-secondary text-sm mt-1">{t("new.subtitle")}</p>
       </header>
 
       {/* Topic */}
       <section className="card mb-6">
-        <label className="block text-sm font-medium mb-2">Topic</label>
+        <label className="block text-sm font-medium mb-2">{t("new.topic")}</label>
         <textarea
           className="input-field min-h-[80px] resize-y"
-          placeholder="Enter discussion topic..."
+          placeholder={t("new.topic_placeholder")}
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           maxLength={2000}
@@ -179,10 +181,10 @@ export default function NewMeetingPage() {
       {/* Global Provider/Model Quick-Set */}
       {providers.length > 0 && (
         <section className="card mb-6">
-          <label className="text-sm font-medium mb-3 block">Quick: Set All Agents</label>
+          <label className="text-sm font-medium mb-3 block">{t("new.quick_set_all_agents")}</label>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-text-muted mb-1">Provider</label>
+              <label className="block text-xs text-text-muted mb-1">{t("new.provider")}</label>
               <select className="input-field text-sm" value={agents[0]?.provider ?? ""}
                 onChange={(e) => {
                   const pid = e.target.value;
@@ -195,7 +197,7 @@ export default function NewMeetingPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-text-muted mb-1">Model</label>
+              <label className="block text-xs text-text-muted mb-1">{t("new.model")}</label>
               <select className="input-field text-sm" value={agents[0]?.model ?? ""}
                 onChange={(e) => applyToAll(agents[0]?.provider ?? "", e.target.value)}>
                 {modelsForProvider(agents[0]?.provider ?? "").map((m) => (
@@ -204,16 +206,16 @@ export default function NewMeetingPage() {
               </select>
             </div>
           </div>
-          <p className="text-text-muted text-xs mt-2">Or configure each agent individually below</p>
+          <p className="text-text-muted text-xs mt-2">{t("new.quick_help")}</p>
         </section>
       )}
 
       {/* Agents */}
       <section className="card mb-6">
         <div className="flex items-center justify-between mb-4">
-          <label className="text-sm font-medium">Agents ({agents.length}/8)</label>
+          <label className="text-sm font-medium">{t("new.agents")} ({agents.length}/8)</label>
           <button onClick={addAgent} disabled={agents.length >= 8} className="btn btn-outline text-xs px-3 py-1">
-            + Add Agent
+            {t("new.add_agent")}
           </button>
         </div>
         <div className="space-y-2">
@@ -224,7 +226,7 @@ export default function NewMeetingPage() {
                 onClick={() => setExpandedAgent(expandedAgent === idx ? null : idx)}
               >
                 <div className={`w-3 h-3 rounded-full ${AGENT_COLORS[idx]} shrink-0`} />
-                <span className="text-sm font-medium flex-1">{agent.display_name || `Agent ${idx + 1}`}</span>
+                <span className="text-sm font-medium flex-1">{agent.display_name || t("new.agent_fallback", { n: idx + 1 })}</span>
                 <span className="text-text-muted text-xs">
                   {providers.find((p) => p.id === agent.provider)?.name ?? agent.provider}
                   {" / "}
@@ -242,17 +244,17 @@ export default function NewMeetingPage() {
                 <div className="border-t border-border p-3 space-y-3 bg-surface-2/50">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-text-muted mb-1">Display Name</label>
+                      <label className="block text-xs text-text-muted mb-1">{t("new.display_name")}</label>
                       <input className="input-field text-sm" value={agent.display_name}
                         onChange={(e) => updateAgent(idx, { display_name: e.target.value })} />
                     </div>
                     <div>
-                      <label className="block text-xs text-text-muted mb-1">ID</label>
+                      <label className="block text-xs text-text-muted mb-1">{t("new.id")}</label>
                       <input className="input-field text-sm" value={agent.id}
                         onChange={(e) => updateAgent(idx, { id: e.target.value })} />
                     </div>
                     <div>
-                      <label className="block text-xs text-text-muted mb-1">Provider</label>
+                      <label className="block text-xs text-text-muted mb-1">{t("new.provider")}</label>
                       <select className="input-field text-sm" value={agent.provider}
                         onChange={(e) => updateAgent(idx, { provider: e.target.value })}>
                         {providers.map((p) => (
@@ -261,7 +263,7 @@ export default function NewMeetingPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-text-muted mb-1">Model</label>
+                      <label className="block text-xs text-text-muted mb-1">{t("new.model")}</label>
                       <select className="input-field text-sm" value={agent.model}
                         onChange={(e) => updateAgent(idx, { model: e.target.value })}>
                         {modelsForProvider(agent.provider).map((m) => (
@@ -274,7 +276,7 @@ export default function NewMeetingPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs text-text-muted mb-1">System Prompt</label>
+                    <label className="block text-xs text-text-muted mb-1">{t("new.system_prompt")}</label>
                     <textarea className="input-field text-sm min-h-[60px] resize-y" value={agent.system_prompt}
                       onChange={(e) => updateAgent(idx, { system_prompt: e.target.value })} />
                   </div>
@@ -295,30 +297,30 @@ export default function NewMeetingPage() {
 
       {/* Settings */}
       <section className="card mb-6">
-        <label className="text-sm font-medium mb-3 block">Settings</label>
+        <label className="text-sm font-medium mb-3 block">{t("new.settings")}</label>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-text-muted mb-1">Discussion Mode</label>
+            <label className="block text-xs text-text-muted mb-1">{t("new.discussion_mode")}</label>
             <select className="input-field text-sm" value={mode}
               onChange={(e) => setMode(e.target.value as typeof mode)}>
-              <option value="auto">Auto</option>
-              <option value="serial_turn">Serial Turn</option>
-              <option value="parallel_round">Parallel Round</option>
+              <option value="auto">{t("new.mode_auto")}</option>
+              <option value="serial_turn">{t("new.mode_serial_turn")}</option>
+              <option value="parallel_round">{t("new.mode_parallel_round")}</option>
             </select>
           </div>
           <div>
-            <label className="block text-xs text-text-muted mb-1">Consensus Threshold ({threshold})</label>
+            <label className="block text-xs text-text-muted mb-1">{t("new.consensus_threshold", { n: threshold })}</label>
             <input type="range" min={0} max={100} value={threshold}
               onChange={(e) => setThreshold(Number(e.target.value))}
               className="w-full accent-primary" />
           </div>
           <div>
-            <label className="block text-xs text-text-muted mb-1">Min Rounds</label>
+            <label className="block text-xs text-text-muted mb-1">{t("new.min_rounds")}</label>
             <input type="number" className="input-field text-sm" min={0} max={maxRounds} value={minRounds}
               onChange={(e) => setMinRounds(Number(e.target.value))} />
           </div>
           <div>
-            <label className="block text-xs text-text-muted mb-1">Max Rounds</label>
+            <label className="block text-xs text-text-muted mb-1">{t("new.max_rounds")}</label>
             <input type="number" className="input-field text-sm" min={minRounds} max={100} value={maxRounds}
               onChange={(e) => setMaxRounds(Number(e.target.value))} />
           </div>
@@ -329,7 +331,7 @@ export default function NewMeetingPage() {
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
       <button onClick={handleSubmit} disabled={submitting || !topic.trim()}
         className="btn btn-primary w-full py-3 text-base">
-        {submitting ? "Creating..." : "Create & Enter Meeting"}
+        {submitting ? t("new.creating") : t("new.create_and_enter")}
       </button>
     </main>
   );

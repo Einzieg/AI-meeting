@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useT } from "@/hooks/use-t";
+import { useUiStore } from "@/store/ui-store";
 
 type ModelInfo = { id: string; name: string; context_window?: number; max_output_tokens?: number };
 type ProviderInfo = { id: string; name: string; configured: boolean; models: ModelInfo[]; is_custom?: boolean };
@@ -92,6 +94,7 @@ function ProviderForm({
   onCancel: () => void;
   onDelete?: () => Promise<void>;
 }) {
+  const t = useT();
   const [name, setName] = useState(initial?.name ?? "");
   const [baseUrl, setBaseUrl] = useState(initial?.base_url ?? "");
   const [apiKey, setApiKey] = useState("");
@@ -132,7 +135,7 @@ function ProviderForm({
           isRecord(payload.error) &&
           typeof payload.error.message === "string"
             ? payload.error.message
-            : "Probe failed";
+            : t("provider_form.probe_failed");
         throw new Error(message);
       }
 
@@ -146,7 +149,7 @@ function ProviderForm({
 
       const parsedModels = parseProbeModels(payload, returnedFormat);
       if (parsedModels.length === 0) {
-        throw new Error("No models were detected from endpoint response");
+        throw new Error(t("provider_form.no_models_detected"));
       }
 
       setModels(parsedModels);
@@ -156,7 +159,7 @@ function ProviderForm({
     } finally {
       setProbing(false);
     }
-  }, [apiKey, baseUrl, format]);
+  }, [apiKey, baseUrl, format, t]);
 
   useEffect(() => {
     if (!baseUrl.trim()) return;
@@ -199,29 +202,29 @@ function ProviderForm({
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-text-muted mb-1">Name</label>
-          <input className="input-field text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="My Provider" />
+          <label className="block text-xs text-text-muted mb-1">{t("provider_form.name")}</label>
+          <input className="input-field text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("provider_form.name_placeholder")} />
         </div>
         <div>
-          <label className="block text-xs text-text-muted mb-1">Base URL</label>
+          <label className="block text-xs text-text-muted mb-1">{t("provider_form.base_url")}</label>
           <input className="input-field text-sm" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs text-text-muted mb-1">API Key</label>
+        <label className="block text-xs text-text-muted mb-1">{t("provider_form.api_key")}</label>
         <div className="relative">
           <input className="input-field text-sm pr-16" type={showKey ? "text" : "password"} value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)} placeholder={initial ? "Leave empty to keep current key" : "Optional"} />
+            onChange={(e) => setApiKey(e.target.value)} placeholder={initial ? t("provider_form.keep_key_placeholder") : t("provider_form.optional")} />
           <button type="button" onClick={() => setShowKey((v) => !v)}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-text-muted hover:text-text">
-            {showKey ? "Hide" : "Show"}
+            {showKey ? t("common.hide") : t("common.show")}
           </button>
         </div>
       </div>
 
       <div>
-        <label className="block text-xs text-text-muted mb-1">API Format</label>
+        <label className="block text-xs text-text-muted mb-1">{t("provider_form.api_format")}</label>
         <div className="grid grid-cols-3 gap-2">
           {PROBE_TABS.map((tab) => (
             <button
@@ -238,15 +241,15 @@ function ProviderForm({
             </button>
           ))}
         </div>
-        <p className="text-[11px] text-text-muted mt-1">Models auto-refresh when URL, key, or format changes.</p>
+        <p className="text-[11px] text-text-muted mt-1">{t("provider_form.auto_refresh_hint")}</p>
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="text-xs text-text-muted">Models ({models.length})</label>
+          <label className="text-xs text-text-muted">{t("provider_form.models", { n: models.length })}</label>
           <button type="button" onClick={() => probe()} disabled={!baseUrl || probing}
             className="btn btn-outline text-xs px-2 py-0.5">
-            {probing ? "Fetching..." : "Refresh Models"}
+            {probing ? t("common.fetching") : t("common.refresh_models")}
           </button>
         </div>
         {probeErr && <p className="text-danger text-xs mb-1">{probeErr}</p>}
@@ -259,11 +262,11 @@ function ProviderForm({
                 className="text-text-muted hover:text-danger text-xs">&times;</button>
             </div>
           ))}
-          {models.length === 0 && <p className="text-text-muted text-xs px-1">No models found yet. Fill URL/key and wait for auto refresh, or click refresh.</p>}
+          {models.length === 0 && <p className="text-text-muted text-xs px-1">{t("provider_form.no_models_yet")}</p>}
           <div className="flex gap-2 pt-1 border-t border-border">
-            <input className="input-field text-xs flex-1" placeholder="model-id" value={newId} onChange={(e) => setNewId(e.target.value)}
+            <input className="input-field text-xs flex-1" placeholder={t("provider_form.model_id_placeholder")} value={newId} onChange={(e) => setNewId(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addModel()} />
-            <input className="input-field text-xs flex-1" placeholder="Display Name" value={newName} onChange={(e) => setNewName(e.target.value)}
+            <input className="input-field text-xs flex-1" placeholder={t("provider_form.model_name_placeholder")} value={newName} onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addModel()} />
             <button type="button" onClick={addModel} className="btn btn-outline text-xs px-2 py-0.5">+</button>
           </div>
@@ -273,12 +276,12 @@ function ProviderForm({
       <div className="flex items-center gap-2 pt-2">
         {onDelete && (
           <button type="button" disabled={saving}
-            onClick={async () => { if (confirm("Delete this provider?")) { setSaving(true); await onDelete(); setSaving(false); } }}
-            className="btn btn-danger text-xs mr-auto">Delete</button>
+            onClick={async () => { if (confirm(t("provider_form.confirm_delete"))) { setSaving(true); await onDelete(); setSaving(false); } }}
+            className="btn btn-danger text-xs mr-auto">{t("common.delete")}</button>
         )}
-        <button type="button" onClick={onCancel} className="btn btn-outline text-xs" disabled={saving}>Cancel</button>
+        <button type="button" onClick={onCancel} className="btn btn-outline text-xs" disabled={saving}>{t("common.cancel")}</button>
         <button type="button" onClick={submit} disabled={saving || !name || !baseUrl || models.length === 0}
-          className="btn btn-primary text-xs">{saving ? "Saving..." : "Save"}</button>
+          className="btn btn-primary text-xs">{saving ? t("common.saving") : t("common.save")}</button>
       </div>
     </div>
   );
@@ -286,6 +289,11 @@ function ProviderForm({
 
 export default function SettingsPage() {
   const router = useRouter();
+  const t = useT();
+  const locale = useUiStore((s) => s.locale);
+  const setLocale = useUiStore((s) => s.setLocale);
+  const theme = useUiStore((s) => s.theme);
+  const setTheme = useUiStore((s) => s.setTheme);
   const [builtIn, setBuiltIn] = useState<ProviderInfo[]>([]);
   const [custom, setCustom] = useState<CustomProviderConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -305,11 +313,11 @@ export default function SettingsPage() {
       if (pJson.ok) setBuiltIn((pJson.data as ProviderInfo[]).filter((p) => !p.is_custom));
       if (cJson.ok) setCustom(cJson.data as CustomProviderConfig[]);
     } catch {
-      setError("Failed to load providers");
+      setError(t("providers.load_failed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load().catch(() => {
@@ -344,30 +352,76 @@ export default function SettingsPage() {
   return (
     <main className="min-h-screen p-6 max-w-3xl mx-auto">
       <header className="mb-8">
-        <button onClick={() => router.push("/")} className="btn btn-outline mb-4 text-sm">&larr; Back</button>
-        <h1 className="text-2xl font-bold">Provider Settings</h1>
-        <p className="text-text-secondary text-sm mt-1">Manage LLM providers and custom endpoints</p>
+        <button onClick={() => router.push("/")} className="btn btn-outline mb-4 text-sm">&larr; {t("common.back")}</button>
+        <h1 className="text-2xl font-bold">{t("settings.title")}</h1>
+        <p className="text-text-secondary text-sm mt-1">{t("settings.subtitle")}</p>
       </header>
 
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
 
+      {/* Appearance */}
+      <section className="card mb-6">
+        <label className="text-sm font-medium mb-3 block">{t("settings.appearance")}</label>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-text-muted mb-1">{t("settings.language")}</label>
+            <select
+              className="input-field text-sm"
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as typeof locale)}
+            >
+              <option value="zh-CN">{t("settings.language.zh-CN")}</option>
+              <option value="en">{t("settings.language.en")}</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-text-muted mb-1">{t("settings.theme")}</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setTheme("light")}
+                className={`text-xs px-2 py-1 rounded border transition-colors ${
+                  theme === "light"
+                    ? "border-primary bg-primary/15 text-primary"
+                    : "border-border text-text-secondary hover:border-border-hover"
+                }`}
+              >
+                {t("settings.theme.light")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTheme("dark")}
+                className={`text-xs px-2 py-1 rounded border transition-colors ${
+                  theme === "dark"
+                    ? "border-primary bg-primary/15 text-primary"
+                    : "border-border text-text-secondary hover:border-border-hover"
+                }`}
+              >
+                {t("settings.theme.dark")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Built-in Providers */}
       <section className="card mb-6">
-        <label className="text-sm font-medium mb-3 block">Built-in Providers</label>
+        <label className="text-sm font-medium mb-3 block">{t("providers.built_in")}</label>
         {loading ? (
-          <p className="text-text-muted text-sm animate-pulse">Loading...</p>
+          <p className="text-text-muted text-sm animate-pulse">{t("common.loading")}</p>
         ) : (
           <div className="space-y-2">
             {builtIn.map((p) => (
               <div key={p.id} className="flex items-center justify-between p-2 rounded-lg border border-border">
                 <div>
                   <span className="text-sm font-medium">{p.name}</span>
-                  <span className="text-text-muted text-xs ml-2">{p.models.length} models</span>
+                  <span className="text-text-muted text-xs ml-2">{t("providers.models_count", { n: p.models.length })}</span>
                 </div>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                   p.configured ? "bg-success/20 text-success" : "bg-warning/20 text-warning"
                 }`}>
-                  {p.configured ? "Configured" : "Not Configured"}
+                  {p.configured ? t("providers.configured") : t("providers.not_configured")}
                 </span>
               </div>
             ))}
@@ -378,16 +432,16 @@ export default function SettingsPage() {
       {/* Custom Providers */}
       <section className="card mb-6">
         <div className="flex items-center justify-between mb-4">
-          <label className="text-sm font-medium">Custom Providers ({custom.length})</label>
+          <label className="text-sm font-medium">{t("providers.custom", { n: custom.length })}</label>
           <button onClick={() => setExpanded(expanded === "__new" ? null : "__new")}
             className="btn btn-outline text-xs px-3 py-1" disabled={loading}>
-            {expanded === "__new" ? "Cancel" : "+ Add Provider"}
+            {expanded === "__new" ? t("common.cancel") : t("providers.add")}
           </button>
         </div>
 
         {expanded === "__new" && (
           <div className="border border-border rounded-lg p-3 mb-3 bg-surface-2/50">
-            <p className="text-sm font-medium mb-3">New Provider</p>
+            <p className="text-sm font-medium mb-3">{t("providers.new")}</p>
             <ProviderForm onSave={create} onCancel={() => setExpanded(null)} />
           </div>
         )}
@@ -399,7 +453,7 @@ export default function SettingsPage() {
                 onClick={() => setExpanded(expanded === p.id ? null : p.id)}>
                 <span className="text-sm font-medium flex-1">{p.name}</span>
                 <span className="text-text-muted text-xs truncate max-w-[200px]">{p.base_url}</span>
-                <span className="text-text-muted text-xs">{p.models.length} models</span>
+                <span className="text-text-muted text-xs">{t("providers.models_count", { n: p.models.length })}</span>
                 <span className="text-text-muted text-xs">{expanded === p.id ? "\u25B2" : "\u25BC"}</span>
               </div>
               {expanded === p.id && (
@@ -411,7 +465,7 @@ export default function SettingsPage() {
             </div>
           ))}
           {!loading && custom.length === 0 && expanded !== "__new" && (
-            <p className="text-text-muted text-xs text-center py-4">No custom providers. Click &quot;+ Add Provider&quot; to add one.</p>
+            <p className="text-text-muted text-xs text-center py-4">{t("providers.none_custom")}</p>
           )}
         </div>
       </section>
