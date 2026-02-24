@@ -16,6 +16,7 @@ export type MeetingDetail = {
     accepted: boolean;
     concluded_at: string;
     summary_markdown?: string;
+    summary_json?: unknown;
     reason?: string;
   };
 };

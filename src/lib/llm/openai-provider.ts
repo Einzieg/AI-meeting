@@ -23,6 +23,8 @@ export type OpenAICompatibleConfig = ProviderConfig & {
   models?: ModelInfo[];
 };
 
+const RETRYABLE_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524]);
+
 function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
@@ -36,6 +38,23 @@ function looksLikeHtml(contentType: string, text: string): boolean {
 function truncateForLog(text: string, max = 220): string {
   if (text.length <= max) return text;
   return `${text.slice(0, max)}...`;
+}
+
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    });
+  });
+}
+
+function calcRetryDelay(attempt: number): number {
+  // 250ms, 500ms, 1000ms (+ small jitter)
+  const base = 250 * 2 ** attempt;
+  const jitter = Math.floor(Math.random() * 120);
+  return base + jitter;
 }
 
 export class OpenAIProvider implements LLMProvider {
@@ -85,13 +104,18 @@ export class OpenAIProvider implements LLMProvider {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(body),
-      signal: options?.signal,
     } as const;
 
     const primaryUrl = `${this.baseUrl}/chat/completions`;
     const fallbackUrl = /\/v\d+$/i.test(this.baseUrl)
       ? null
       : `${this.baseUrl}/v1/chat/completions`;
+    const candidateUrls = fallbackUrl && fallbackUrl !== primaryUrl
+      ? [primaryUrl, fallbackUrl]
+      : [primaryUrl];
+    const maxRetries = 2;
+
+    const timeoutMs = Math.max(5_000, Math.min(120_000, req.timeout_ms ?? 60_000));
 
     const requestOnce = async (url: string): Promise<{
       url: string;
@@ -100,30 +124,127 @@ export class OpenAIProvider implements LLMProvider {
       contentType: string;
       text: string;
     }> => {
-      const res = await fetch(url, requestOptions);
-      const text = await res.text().catch(() => "");
-      return {
-        url,
-        status: res.status,
-        ok: res.ok,
-        contentType: (res.headers.get("content-type") ?? "").toLowerCase(),
-        text,
-      };
+      const controller = new AbortController();
+      const upstreamSignal = options?.signal;
+      const onAbort = () => controller.abort();
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      if (upstreamSignal) {
+        if (upstreamSignal.aborted) {
+          controller.abort();
+        } else {
+          upstreamSignal.addEventListener("abort", onAbort, { once: true });
+        }
+      }
+
+      timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const res = await fetch(url, { ...requestOptions, signal: controller.signal });
+        const text = await res.text().catch(() => "");
+        return {
+          url,
+          status: res.status,
+          ok: res.ok,
+          contentType: (res.headers.get("content-type") ?? "").toLowerCase(),
+          text,
+        };
+      } catch (err) {
+        if (controller.signal.aborted && !upstreamSignal?.aborted) {
+          throw new Error(`OpenAI request timeout (${timeoutMs}ms) at ${url}`);
+        }
+        throw err;
+      } finally {
+        if (timer) clearTimeout(timer);
+        if (upstreamSignal) {
+          upstreamSignal.removeEventListener("abort", onAbort);
+        }
+      }
     };
 
-    let response = await requestOnce(primaryUrl);
+    const requestWithRetry = async (url: string): Promise<{
+      url: string;
+      status: number;
+      ok: boolean;
+      contentType: string;
+      text: string;
+    }> => {
+      let lastError: Error | null = null;
+      let lastResponse: Awaited<ReturnType<typeof requestOnce>> | null = null;
 
-    // Compatibility fallback: many OpenAI-compatible gateways require "/v1".
-    if (
-      fallbackUrl &&
-      (response.status === 404 || looksLikeHtml(response.contentType, response.text))
-    ) {
-      response = await requestOnce(fallbackUrl);
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const response = await requestOnce(url);
+          lastResponse = response;
+
+          if (response.ok) return response;
+
+          const retryable =
+            RETRYABLE_STATUS.has(response.status) ||
+            (looksLikeHtml(response.contentType, response.text) && response.status >= 500);
+
+          if (!retryable || attempt === maxRetries) return response;
+        } catch (err) {
+          lastError = err as Error;
+          if ((err as Error).name === "AbortError" || attempt === maxRetries) {
+            throw err;
+          }
+        }
+
+        await delay(calcRetryDelay(attempt), options?.signal);
+      }
+
+      if (lastResponse) return lastResponse;
+      throw lastError ?? new Error(`OpenAI request failed at ${url}`);
+    };
+
+    let response: Awaited<ReturnType<typeof requestOnce>> | null = null;
+    let lastError: Error | null = null;
+
+    for (const url of candidateUrls) {
+      try {
+        const current = await requestWithRetry(url);
+        if (current.ok && !looksLikeHtml(current.contentType, current.text)) {
+          response = current;
+          break;
+        }
+
+        // For compatibility / edge proxies, continue trying the fallback URL.
+        if (url === primaryUrl && fallbackUrl) {
+          const shouldTryFallback =
+            (current.ok && looksLikeHtml(current.contentType, current.text)) ||
+            current.status === 404 ||
+            looksLikeHtml(current.contentType, current.text) ||
+            RETRYABLE_STATUS.has(current.status);
+          if (shouldTryFallback) {
+            response = current;
+            continue;
+          }
+        }
+
+        response = current;
+        break;
+      } catch (err) {
+        lastError = err as Error;
+        if ((err as Error).name === "AbortError") throw err;
+        if (url !== primaryUrl || !fallbackUrl) break;
+      }
     }
 
-    if (!response.ok) {
+    if (!response || !response.ok) {
+      if (response) {
+        throw new Error(
+          `OpenAI API error (${response.status}) at ${response.url} after retries: ${truncateForLog(response.text)}`
+        );
+      }
       throw new Error(
-        `OpenAI API error (${response.status}) at ${response.url}: ${truncateForLog(response.text)}`
+        `OpenAI API request failed after retries: ${lastError?.message ?? "unknown error"}`
+      );
+    }
+
+    if (looksLikeHtml(response.contentType, response.text)) {
+      throw new Error(
+        `OpenAI endpoint returned HTML at ${response.url}. Check BASE_URL/proxy path (expected JSON API).`
       );
     }
 
