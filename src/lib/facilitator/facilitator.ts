@@ -41,6 +41,7 @@ export class FacilitatorService {
           messages,
           temperature: this.config.temperature,
           max_tokens: this.config.max_output_tokens,
+          timeout_ms: this.config.timeout_ms,
           response_format: { type: "json_object" },
           metadata: { agent_id: "facilitator", topic: input.topic },
         });

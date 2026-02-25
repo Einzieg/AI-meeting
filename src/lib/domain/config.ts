@@ -45,6 +45,7 @@ export const FacilitatorConfigSchema = z
     model: z.string().min(1).max(120).optional(),
     temperature: z.number().min(0).max(2).default(0.2),
     max_output_tokens: z.number().int().min(64).max(8192).default(800),
+    timeout_ms: z.number().int().min(5_000).max(300_000).default(90_000),
   })
   .default({});
 export type FacilitatorConfigInput = z.input<typeof FacilitatorConfigSchema>;
