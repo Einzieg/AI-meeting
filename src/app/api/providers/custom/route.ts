@@ -3,8 +3,15 @@ import { z } from "zod";
 import { nanoid } from "nanoid";
 import { getLLMRegistry } from "@/lib/runtime";
 import type { CustomProviderConfig } from "@/lib/llm/types";
+import {
+  createCustomProviderConfig,
+  getCustomProviderConfig,
+  listCustomProviderConfigs,
+} from "@/lib/llm/custom-provider-persistence";
 
-const RESERVED_IDS = ["mock", "openai", "anthropic", "gemini"];
+export const runtime = "nodejs";
+
+const RESERVED_IDS = ["auto", "mock", "openai", "anthropic", "gemini"];
 
 const ModelInfoSchema = z.object({
   id: z.string().min(1).max(120),
@@ -31,8 +38,9 @@ function maskKey(config: CustomProviderConfig) {
 
 // GET /api/providers/custom - List all custom provider configs (keys masked)
 export async function GET() {
-  const registry = getLLMRegistry();
-  return NextResponse.json({ ok: true, data: registry.listCustomConfigs().map(maskKey) });
+  // Ensure persisted configs are loaded and any in-memory configs are migrated (dev hot reload).
+  getLLMRegistry();
+  return NextResponse.json({ ok: true, data: listCustomProviderConfigs().map(maskKey) });
 }
 
 // POST /api/providers/custom - Create a new custom provider
@@ -44,14 +52,14 @@ export async function POST(request: Request) {
     const registry = getLLMRegistry();
     const id = parsed.id ?? `custom-${nanoid(8)}`;
 
-    if (RESERVED_IDS.includes(id) || registry.hasProvider(id)) {
+    if (RESERVED_IDS.includes(id) || registry.hasProvider(id) || getCustomProviderConfig(id)) {
       return NextResponse.json(
         { ok: false, error: { code: "CONFLICT", message: `Provider ID "${id}" is reserved or already exists` } },
         { status: 409 }
       );
     }
 
-    const config = {
+    const config: CustomProviderConfig = {
       id,
       name: parsed.name,
       base_url: parsed.base_url,
@@ -60,6 +68,7 @@ export async function POST(request: Request) {
       created_at: new Date().toISOString(),
     };
 
+    createCustomProviderConfig(config);
     registry.registerCustom(config);
     return NextResponse.json({ ok: true, data: maskKey(config) }, { status: 201 });
   } catch (err) {
@@ -69,6 +78,7 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    console.error("[API] POST /api/providers/custom error:", err);
     return NextResponse.json(
       { ok: false, error: { code: "INTERNAL", message: "Failed to create provider" } },
       { status: 500 }

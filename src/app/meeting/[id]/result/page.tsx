@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import type { MeetingDetail } from "@/store/meeting-store";
 import type { Message, Vote } from "@/lib/domain/models";
 import { useT } from "@/hooks/use-t";
+import { Markdown } from "@/components/markdown";
 
 const AGENT_COLORS: Record<string, string> = {
   "agent-1": "#6366f1",
@@ -284,40 +285,34 @@ export default function ResultPage() {
         </section>
       )}
 
-      {activeTab === "result_doc" && (
-        <section className="card">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <h2 className="text-sm font-medium text-text-muted">Final Result Document</h2>
-            <a href={`/api/meetings/${meetingId}/report?kind=result&download=1`} className="btn btn-outline text-xs">
-              Download
-            </a>
-          </div>
-          <article className="markdown-preview">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{finalDocumentMarkdown}</ReactMarkdown>
-          </article>
-        </section>
-      )}
+      {/* Discussion Timeline (collapsed) */}
+      <details className="card mb-6">
+        <summary className="cursor-pointer text-sm font-medium text-text-muted">
+          {t("result.full_discussion", { n: messages.length })}
+        </summary>
+        <div className="mt-3 space-y-2 max-h-[500px] overflow-y-auto">
+          {messages.map((msg) => (
+            <div key={msg.id} className="flex gap-2 py-1.5 border-b border-border/30 last:border-0">
+              <span className="text-xs text-text-muted w-6 shrink-0">R{msg.meta.round}</span>
+              <span className="text-xs font-medium w-24 shrink-0 truncate" style={{
+                color: msg.role === "agent" ? (AGENT_COLORS[msg.agent_id ?? ""] ?? "#6366f1") :
+                  msg.role === "user" ? "#6366f1" : "#71717a"
+              }}>
+                {msg.role === "agent" ? (agentMap[msg.agent_id ?? ""] ?? msg.agent_id) :
+                  msg.role === "user" ? t("common.you") : (msg.system_id ?? t("common.system"))}
+              </span>
+              <span className="text-xs text-text-secondary flex-1 line-clamp-2">{msg.content}</span>
+            </div>
+          ))}
+        </div>
+      </details>
 
-      {activeTab === "report" && (
-        <section className="card space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-medium text-text-muted">Meeting Review Report</h2>
-            <a href={`/api/meetings/${meetingId}/report?kind=report&download=1`} className="btn btn-outline text-xs">
-              Download
-            </a>
-          </div>
-          <article className="markdown-preview">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {reportMarkdown || "No meeting report was generated."}
-            </ReactMarkdown>
-          </article>
-          <details>
-            <summary className="cursor-pointer text-xs text-text-muted">Raw Markdown</summary>
-            <pre className="bg-surface-2 border border-border rounded-lg p-3 text-xs overflow-x-auto whitespace-pre-wrap mt-2">
-              {reportMarkdown || "No report markdown."}
-            </pre>
-          </details>
-        </section>
+      {/* Summary */}
+      {meeting.result?.summary_markdown && (
+        <div className="card mb-6">
+          <h2 className="text-sm font-medium text-text-muted mb-2">{t("result.summary")}</h2>
+          <Markdown content={meeting.result.summary_markdown} className="text-sm text-text-secondary" />
+        </div>
       )}
 
       {activeTab === "timeline" && (
